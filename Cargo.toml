@@ -1,0 +1,10 @@
+[package]
+name = "ternary-graph"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Graph algorithms on ternary-weighted edges including shortest paths, community detection, and spectral clustering"
+keywords = ["ternary", "graph", "clustering", "spectral", "shortest-path"]
+categories = ["algorithms", "mathematics", "science"]
+
+[dependencies]
