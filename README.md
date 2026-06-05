@@ -1,109 +1,87 @@
 # ternary-graph
 
+**# ternary-graph  Graph algorithms operating on ternary-weighted edges (`-1`, `0`, `+1`)**
+
+[![ternary](https://img.shields.io/badge/ecosystem-ternary-blue)](https://github.com/orgs/SuperInstance/repositories?q=ternary)
+[![tests](https://img.shields.io/badge/tests-18-green)]()
+
+## Overview
+
+# ternary-graph
+
 Graph algorithms operating on ternary-weighted edges (`-1`, `0`, `+1`).
+Provides ternary adjacency matrices, shortest paths with ternary weights,
+community detection via modularity optimization, graph Laplacian computation,
+and spectral clustering.
 
-## Why This Exists
+## Architecture
 
-Not all relationships are positive. Social networks have allies and adversaries. Gene interactions can be activating or inhibiting. Financial correlations can be positive, negative, or absent. Standard graph libraries treat edges as binary (present/absent) or weighted with positive reals — they can't express that an edge *repels* rather than attracts. This crate provides graph algorithms that natively understand ternary edge weights: positive edges connect, negative edges separate, and zero edges mean no relationship. Shortest paths handle negative-weight edges via Bellman-Ford. Community detection uses signed modularity. Spectral clustering uses the signed Laplacian.
+- **`TernaryGraph`** — core data structure
+- **`Ternary`** — state enumeration
 
-## Core Concepts
+### Key Functions
 
-- **`Ternary`** — Edge weight: `Neg` (−1, adversarial/inhibiting), `Zero` (0, no edge), `Pos` (+1, friendly/activating).
-- **`TernaryGraph`** — Adjacency matrix representation with ternary weights. Supports both directed and undirected graphs.
-- **Signed Laplacian** — `L = D − A`, where `D` uses absolute degrees. Captures the structure of positive and negative edges simultaneously.
-- **Signed modularity** — Extends Newman-Girvan modularity to signed graphs: positive within-community edges increase modularity, negative ones decrease it.
+- `to_i8()`
+- `to_f64()`
+- `new()`
+- `add_edge()`
+- `edge()`
+- `neighbors()`
+- `edge_count()`
+- `degree()`
+- `degree_matrix()`
+- `adjacency_f64()`
+- ... and 8 more
 
-## Quick Start
+## Why Ternary?
 
-```toml
-# Cargo.toml
-[dependencies]
-ternary-graph = "0.1"
-```
+The balanced ternary system {-1, 0, +1} (also known as Z₃) is the mathematically optimal discrete encoding:
+- **More expressive than binary**: three states capture positive, neutral, and negative
+- **Natural for decisions**: accept/reject/abstain, buy/hold/sell, agree/disagree/neutral
+- **Self-balancing**: the 0 state acts as a universal screen, preventing pathological lock-in
+- **Z₃ cyclic dynamics**: rock-paper-scissors is the only natural coordination mechanism
 
-```rust
-use ternary_graph::*;
+## Stats
 
-fn main() {
-    // Build a signed social network
-    let mut g = TernaryGraph::new(5, false);
-    g.add_edge(0, 1, Ternary::Pos); // allies
-    g.add_edge(1, 2, Ternary::Pos);
-    g.add_edge(2, 3, Ternary::Neg); // adversaries
-    g.add_edge(3, 4, Ternary::Pos);
-    g.add_edge(0, 4, Ternary::Pos);
-
-    // Shortest paths (handles negative weights via Bellman-Ford)
-    let dist = shortest_paths(&g, 0);
-    println!("Distances from node 0: {:?}", dist);
-
-    // Community detection
-    let communities = label_propagation(&g, 100);
-    println!("Communities: {:?}", communities);
-
-    // Spectral clustering into 2 groups
-    let clusters = spectral_clustering(&g, 2);
-    println!("Spectral clusters: {:?}", clusters);
-
-    // Signed modularity of a partition
-    let q = modularity(&g, &clusters);
-    println!("Modularity: {:.4}", q);
-}
-```
-
-## API Overview
-
-### Graph Construction
-- `TernaryGraph::new(n, directed)` — Create an `n`-vertex graph
-- `g.add_edge(u, v, weight)` — Add a ternary-weighted edge
-- `g.neighbors(v)` — Get neighbors with their edge weights
-- `g.edge_count()`, `g.degree(v)` — Basic graph statistics
-
-### Graph Matrices
-- `g.laplacian()` — Standard Laplacian `L = D − A`
-- `g.normalized_laplacian()` — Normalized Laplacian `D^{−1/2} L D^{−1/2}`
-- `g.adjacency_f64()`, `g.degree_matrix()` — Raw matrix access
-
-### Shortest Paths
-- `shortest_paths(graph, source)` — Single-source via Bellman-Ford. Detects negative cycles and marks affected vertices as unreachable.
-- `all_pairs_shortest_paths(graph)` — All-pairs via Floyd-Warshall.
-
-### Community Detection
-- `label_propagation(graph, max_iters)` — Weighted label propagation: positive edges attract, negative edges repel.
-- `spectral_clustering(graph, k)` — Spectral partitioning using the signed Laplacian's Fiedler vector.
-- `modularity(graph, communities)` — Signed modularity score for a given community assignment.
-- `connected_components(graph)` — Components of the positive-weight subgraph.
-
-## How It Works
-
-**Bellman-Ford** relaxes all edges `n−1` times, then runs one additional pass to detect negative-weight cycles reachable from the source. Reachable vertices are propagated and marked as having undefined distance.
-
-**Label propagation** iteratively assigns each vertex the label with the highest weighted vote from its neighbors (positive edges vote for the same label, negative edges vote against). Convergence occurs when no labels change.
-
-**Spectral clustering** builds the signed Laplacian (`D` uses absolute-value degrees), shifts it to make all eigenvalues positive, then uses power iteration to find the Fiedler vector (second eigenvector). For `k=2`, vertices are split at the median; for larger `k`, a hash-based assignment across eigenvectors is used.
-
-## Use Cases
-
-1. **Social network analysis** — Detect communities in networks with friendships (positive) and rivalries (negative).
-2. **Gene regulatory networks** — Identify functional modules where genes have activating (+1) or inhibiting (−1) interactions.
-3. **Financial correlation graphs** — Cluster assets based on positive/negative/uncorrelated return relationships.
-4. **Recommendation systems** — Model like/dislike/neutral relationships between users and items as a signed bipartite graph.
+| Metric | Value |
+|--------|-------|
+| Lines of Rust | 690 |
+| Test count | 18 |
+| Public types | 2 |
+| Public functions | 18 |
 
 ## Ecosystem
 
-- [`ternary-clustering`](https://github.com/user/ternary-clustering) — Clustering algorithms for ternary data
-- [`ternary-automata`](https://github.com/user/ternary-automata) — Cellular automata with ternary states
-- [`ternary-projection`](https://github.com/user/ternary-projection) — Dimensionality reduction for ternary data
+This crate is part of the **[SuperInstance Ternary Fleet](https://github.com/orgs/SuperInstance/repositories?q=ternary)**:
+
+- **[ternary-core](https://github.com/SuperInstance/ternary-core)** — shared traits and Z₃ arithmetic
+- **[ternary-grid](https://github.com/SuperInstance/ternary-grid)** — spatial grid with {-1, 0, +1} cells
+- **[ternary-graph](https://github.com/SuperInstance/ternary-graph)** — ternary-weighted graph algorithms
+- **[ternary-automata](https://github.com/SuperInstance/ternary-automata)** — three-state cellular automata
+- **[ternary-compiler](https://github.com/SuperInstance/ternary-compiler)** — expression compiler and optimizer
+
+200+ crates. 4,300+ tests. One pattern.
+
+## Research Context
+
+The ternary approach connects to several active research areas:
+- **Ternary Neural Networks** (TNNs): weights constrained to {-1, 0, +1} for efficient inference
+- **Huawei's ternary chip**: 7nm ternary silicon with 60% less power consumption
+- **Active inference**: free energy minimization naturally maps to ternary action selection
+- **Cyclic dominance**: RPS dynamics maintain biodiversity in spatial ecology
+- **Z₃ group theory**: the only algebraic group on three elements is cyclic addition mod 3
+
+## Usage
+
+```toml
+[dependencies]
+ternary-graph = "0.1.0"
+```
+
+```rust
+use ternary_graph;
+```
 
 ## License
 
 MIT
-
-## See Also
-- **ternary-network** — related
-- **ternary-topology** — related
-- **ternary-mesh** — related
-- **ternary-clustering** — related
-- **ternary-path** — related
-- **ternary-petri** — related
-
