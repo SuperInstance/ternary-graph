@@ -2,33 +2,9 @@
 
 Graph algorithms operating on ternary-weighted edges (`-1`, `0`, `+1`).
 
----
-
 ## Why This Exists
 
-Standard graph libraries treat edges as binary (present/absent) or weighted with positive reals. That works if your graph represents a road network or a social network where "friend" is the only relationship that matters.
-
-But the world has more texture than that.
-
-Not all relationships are positive. Social networks have allies **and** adversaries. Gene interactions can be activating or inhibiting. Financial correlations can be positive, negative, or absent. A standard graph library has no way to express that an edge *repels* rather than attracts.
-
-Ternary-weighted graphs solve this: (+1) edges connect, (-1) edges separate, and (0) edges mean no relationship. Shortest paths handle negative-weight edges via Bellman-Ford. Community detection uses signed modularity that rewards positive within-group edges and penalizes negative ones. The signed Laplacian captures both attraction and repulsion in a single matrix.
-
-This crate exists because binary graphs are a lie. Relationships have valence. This library models that.
-
----
-
-> ⛏️ **DEEP CUT: Why Not Just Use Signed Weights?**  
-> 
-> You might ask: why restrict to {-1, 0, +1} when you could use the full real number line? The answer is: because continuous weights carry more information than is meaningful.  
-> 
-> A weight of -0.37 vs -0.42 doesn't capture anything useful about an adversarial relationship that -1 doesn't cover. But it *does* add floating-point drift, numerical instability, and algorithmic complexity to every graph operation.  
-> 
-> Ternary weights force you to ask: is this edge positive, negative, or absent? There's no room for spurious precision. The three values correspond to three distinct physical states — cooperation, neutral, competition — and those are the only states an agent needs to distinguish. Continuous weights would be a liability, not a feature.  
-> 
-> The real insight: restricting the value domain *increases* algorithmic robustness. Floyd-Warshall on ternary matrices doesn't have convergence issues. Signed modularity doesn't need threshold tuning. The ternary constraint is the feature, not the limitation.
-
----
+Not all relationships are positive. Social networks have allies and adversaries. Gene interactions can be activating or inhibiting. Financial correlations can be positive, negative, or absent. Standard graph libraries treat edges as binary (present/absent) or weighted with positive reals — they can't express that an edge *repels* rather than attracts. This crate provides graph algorithms that natively understand ternary edge weights: positive edges connect, negative edges separate, and zero edges mean no relationship. Shortest paths handle negative-weight edges via Bellman-Ford. Community detection uses signed modularity. Spectral clustering uses the signed Laplacian.
 
 ## Core Concepts
 
@@ -102,10 +78,32 @@ fn main() {
 
 **Bellman-Ford** relaxes all edges `n−1` times, then runs one additional pass to detect negative-weight cycles reachable from the source. Reachable vertices are propagated and marked as having undefined distance.
 
-**Label propagation** initializes each vertex with a unique label, then iteratively updates each vertex's label to the most common label among its neighbors — weighted by edge sign (positive edges attract, negative edges repel). Convergence is typically fast (10-50 iterations for well-structured graphs).
+**Label propagation** iteratively assigns each vertex the label with the highest weighted vote from its neighbors (positive edges vote for the same label, negative edges vote against). Convergence occurs when no labels change.
 
-**Spectral clustering** computes the signed Laplacian, sorts eigenvectors by eigenvalue, and uses the k smallest-eigenvalue eigenvectors to embed vertices. The smallest eigenvalue gives the Fiedler vector directly.
+**Spectral clustering** builds the signed Laplacian (`D` uses absolute-value degrees), shifts it to make all eigenvalues positive, then uses power iteration to find the Fiedler vector (second eigenvector). For `k=2`, vertices are split at the median; for larger `k`, a hash-based assignment across eigenvectors is used.
 
-**Signed modularity** computes the difference between actual edge density within communities and expected edge density under a null model, where positive edges within communities increase the score and negative edges within communities penalize it.
+## Use Cases
 
-License: MIT
+1. **Social network analysis** — Detect communities in networks with friendships (positive) and rivalries (negative).
+2. **Gene regulatory networks** — Identify functional modules where genes have activating (+1) or inhibiting (−1) interactions.
+3. **Financial correlation graphs** — Cluster assets based on positive/negative/uncorrelated return relationships.
+4. **Recommendation systems** — Model like/dislike/neutral relationships between users and items as a signed bipartite graph.
+
+## Ecosystem
+
+- [`ternary-clustering`](https://github.com/user/ternary-clustering) — Clustering algorithms for ternary data
+- [`ternary-automata`](https://github.com/user/ternary-automata) — Cellular automata with ternary states
+- [`ternary-projection`](https://github.com/user/ternary-projection) — Dimensionality reduction for ternary data
+
+## License
+
+MIT
+
+## See Also
+- **ternary-network** — related
+- **ternary-topology** — related
+- **ternary-mesh** — related
+- **ternary-clustering** — related
+- **ternary-path** — related
+- **ternary-petri** — related
+
