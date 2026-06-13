@@ -1,38 +1,30 @@
-# PLUG_AND_PLAY — Graph
+# PLUG_AND_PLAY — ternary-graph
 
-> Graph algorithms on ternary-weighted edges
+> *Integration guide.*
 
-## 🚀 Quick Start
-
-Add to your `Cargo.toml`:
+## Dependency
 
 ```toml
 [dependencies]
-ternary-graph = { git = "https://github.com/SuperInstance/ternary-graph" }
+ternary_graph = "0.1.0"
 ```
 
-Use in your code:
+## Feature Flags
 
-```rust
-use ternary_graph::TernaryGraph;
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `std` | yes | Standard library |
+| `alloc` | yes | Allocator support |
 
-let mut g = TernaryGraph::new(4);
-g.add_edge(0, 1, TernaryGraph::Pos);
-let path = g.shortest_path(0, 3);
+## Integration
+
+Import `ternary_graph` in your project to access the functionality.
+
+```
+use ternary_graph::{};
 ```
 
-## 📚 Available Documentation
+## Compatibility
 
-| Document | Description |
-|----------|-------------|
-| `docs/FROM_BINARY.md` | Understanding ternary concepts as a binary programmer |
-| `docs/MIGRATION.md` | Version migration guide |
-| `docs/FUTURE-INTEGRATION.md` | Planned features and roadmap |
-
-## 🔗 Integration
-
-This crate is part of the [SuperInstance ternary fleet](https://github.com/SuperInstance). It uses the canonical `Ternary` type from `ternary-types` for cross-crate compatibility.
-
-## 📄 License
-
-MIT
+- **Rust edition**: 2021+
+- **Targets**: All tier-1 Rust targets

@@ -7,25 +7,21 @@
 
 #![forbid(unsafe_code)]
 
-/// A ternary edge weight: Negative (-1), Zero (0), or Positive (+1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Ternary {
-    Neg,
-    Zero,
-    Pos,
+/// Canonical ternary type re-exported from `ternary-types`.
+///
+/// Maps `Neg -> Negative`, `Zero -> Neutral`, `Pos -> Positive` from the
+/// previous custom enum.
+pub use ternary_types::Ternary;
+
+/// Extension trait providing methods previously on the custom `Ternary` type.
+pub trait TernaryExt {
+    /// Convert this ternary value to `f64`.
+    fn to_f64(self) -> f64;
 }
 
-impl Ternary {
-    pub fn to_i8(self) -> i8 {
-        match self {
-            Ternary::Neg => -1,
-            Ternary::Zero => 0,
-            Ternary::Pos => 1,
-        }
-    }
-
-    pub fn to_f64(self) -> f64 {
-        self.to_i8() as f64
+impl TernaryExt for ternary_types::Ternary {
+    fn to_f64(self) -> f64 {
+        i8::from(self) as f64
     }
 }
 
@@ -45,7 +41,7 @@ impl TernaryGraph {
     pub fn new(n: usize, directed: bool) -> Self {
         TernaryGraph {
             n,
-            adj: vec![vec![Ternary::Zero; n]; n],
+            adj: vec![vec![Ternary::Neutral; n]; n],
             directed,
         }
     }
@@ -66,7 +62,7 @@ impl TernaryGraph {
     /// Get neighbors of vertex `v` (vertices connected by non-zero edges).
     pub fn neighbors(&self, v: usize) -> Vec<(usize, Ternary)> {
         (0..self.n)
-            .filter(|&u| self.adj[v][u] != Ternary::Zero)
+            .filter(|&u| self.adj[v][u] != Ternary::Neutral)
             .map(|u| (u, self.adj[v][u]))
             .collect()
     }
@@ -76,7 +72,7 @@ impl TernaryGraph {
         let mut count = 0;
         for i in 0..self.n {
             for j in 0..self.n {
-                if self.adj[i][j] != Ternary::Zero {
+                if self.adj[i][j] != Ternary::Neutral {
                     count += 1;
                 }
             }
@@ -473,7 +469,7 @@ pub fn connected_components(graph: &TernaryGraph) -> Vec<usize> {
             let v = queue[head];
             head += 1;
             for (u, w) in graph.neighbors(v) {
-                if components[u] == usize::MAX && w == Ternary::Pos {
+                if components[u] == usize::MAX && w == Ternary::Positive {
                     components[u] = component_id;
                     queue.push(u);
                 }
@@ -491,9 +487,9 @@ mod tests {
 
     fn make_simple_graph() -> TernaryGraph {
         let mut g = TernaryGraph::new(4, false);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Pos);
-        g.add_edge(2, 3, Ternary::Pos);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Positive);
+        g.add_edge(2, 3, Ternary::Positive);
         g
     }
 
@@ -507,17 +503,17 @@ mod tests {
     #[test]
     fn test_add_edge_undirected() {
         let g = make_simple_graph();
-        assert_eq!(g.edge(0, 1), Ternary::Pos);
-        assert_eq!(g.edge(1, 0), Ternary::Pos);
-        assert_eq!(g.edge(0, 3), Ternary::Zero);
+        assert_eq!(g.edge(0, 1), Ternary::Positive);
+        assert_eq!(g.edge(1, 0), Ternary::Positive);
+        assert_eq!(g.edge(0, 3), Ternary::Neutral);
     }
 
     #[test]
     fn test_add_edge_directed() {
         let mut g = TernaryGraph::new(3, true);
-        g.add_edge(0, 1, Ternary::Pos);
-        assert_eq!(g.edge(0, 1), Ternary::Pos);
-        assert_eq!(g.edge(1, 0), Ternary::Zero);
+        g.add_edge(0, 1, Ternary::Positive);
+        assert_eq!(g.edge(0, 1), Ternary::Positive);
+        assert_eq!(g.edge(1, 0), Ternary::Neutral);
     }
 
     #[test]
@@ -531,8 +527,8 @@ mod tests {
         let g = make_simple_graph();
         let nb = g.neighbors(1);
         assert_eq!(nb.len(), 2);
-        assert!(nb.contains(&(0, Ternary::Pos)));
-        assert!(nb.contains(&(2, Ternary::Pos)));
+        assert!(nb.contains(&(0, Ternary::Positive)));
+        assert!(nb.contains(&(2, Ternary::Positive)));
     }
 
     #[test]
@@ -577,8 +573,8 @@ mod tests {
     #[test]
     fn test_shortest_paths_with_negative() {
         let mut g = TernaryGraph::new(3, true);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Neg);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Negative);
         let dist = shortest_paths(&g, 0);
         assert_eq!(dist[0], Some(0.0));
         assert_eq!(dist[1], Some(1.0));
@@ -588,7 +584,7 @@ mod tests {
     #[test]
     fn test_shortest_paths_disconnected() {
         let mut g = TernaryGraph::new(4, false);
-        g.add_edge(0, 1, Ternary::Pos);
+        g.add_edge(0, 1, Ternary::Positive);
         // 2 and 3 are isolated
         let dist = shortest_paths(&g, 0);
         assert_eq!(dist[0], Some(0.0));
@@ -608,9 +604,9 @@ mod tests {
     #[test]
     fn test_label_propagation() {
         let mut g = TernaryGraph::new(4, false);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Pos);
-        g.add_edge(2, 3, Ternary::Neg);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Positive);
+        g.add_edge(2, 3, Ternary::Negative);
         let labels = label_propagation(&g, 100);
         // 0, 1, 2 should form one community; 3 should be different due to negative edge
         assert_eq!(labels.len(), 4);
@@ -619,8 +615,8 @@ mod tests {
     #[test]
     fn test_modularity() {
         let mut g = TernaryGraph::new(4, false);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(2, 3, Ternary::Pos);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(2, 3, Ternary::Positive);
         let communities = vec![0, 0, 1, 1];
         let q = modularity(&g, &communities);
         // Good partition should have positive modularity
@@ -639,14 +635,14 @@ mod tests {
     fn test_spectral_clustering() {
         let mut g = TernaryGraph::new(6, false);
         // Two triangles connected by a single edge
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Pos);
-        g.add_edge(0, 2, Ternary::Pos);
-        g.add_edge(3, 4, Ternary::Pos);
-        g.add_edge(4, 5, Ternary::Pos);
-        g.add_edge(3, 5, Ternary::Pos);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Positive);
+        g.add_edge(0, 2, Ternary::Positive);
+        g.add_edge(3, 4, Ternary::Positive);
+        g.add_edge(4, 5, Ternary::Positive);
+        g.add_edge(3, 5, Ternary::Positive);
         // Single bridge edge
-        g.add_edge(2, 3, Ternary::Pos);
+        g.add_edge(2, 3, Ternary::Positive);
         let labels = spectral_clustering(&g, 2);
         assert_eq!(labels.len(), 6);
         // With only a single bridge, the Fiedler vector should mostly separate the triangles.
@@ -665,9 +661,9 @@ mod tests {
     #[test]
     fn test_connected_components() {
         let mut g = TernaryGraph::new(6, false);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Pos);
-        g.add_edge(3, 4, Ternary::Pos);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Positive);
+        g.add_edge(3, 4, Ternary::Positive);
         // 5 is isolated
         let comp = connected_components(&g);
         assert_eq!(comp[0], comp[1]);
@@ -680,8 +676,8 @@ mod tests {
     #[test]
     fn test_connected_components_negative_edges() {
         let mut g = TernaryGraph::new(3, false);
-        g.add_edge(0, 1, Ternary::Pos);
-        g.add_edge(1, 2, Ternary::Neg);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(1, 2, Ternary::Negative);
         let comp = connected_components(&g);
         // Only positive edges connect
         assert_eq!(comp[0], comp[1]);
