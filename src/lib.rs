@@ -473,11 +473,14 @@ pub fn label_propagation(graph: &TernaryGraph, max_iters: usize) -> Vec<usize> {
                 continue;
             }
 
-            // Pick the label with the highest weighted vote; ties broken by
-            // smallest label id (BTreeMap iterates ascending, and we only
-            // replace on a strictly-greater vote).
+            // The vertex's *current* label is always a candidate (its vote is
+            // the entry already inside `votes`, or 0.0 if no neighbor shares
+            // it). We only switch on a strictly-greater score so that "all
+            // neighbours dislike me" doesn't force us to adopt a label we
+            // dislike even more than our current one. Ties resolve to the
+            // smallest label id (BTreeMap iterates ascending).
             let mut best_label = labels[v];
-            let mut best_score = f64::NEG_INFINITY;
+            let mut best_score = votes.get(&labels[v]).copied().unwrap_or(0.0);
             for (&label, &score) in votes.iter() {
                 if score > best_score {
                     best_score = score;
@@ -881,28 +884,67 @@ mod tests {
 
     #[test]
     fn test_label_propagation() {
+        // Path 0 -- 1 -- 2 with positive edges, vertex 3 linked to 2 by a
+        // negative edge. The three positive-chain vertices should collapse
+        // into one community; vertex 3 should land in a different one.
         let mut g = TernaryGraph::new(4, false);
         g.add_edge(0, 1, Ternary::Positive);
         g.add_edge(1, 2, Ternary::Positive);
         g.add_edge(2, 3, Ternary::Negative);
         let labels = label_propagation(&g, 100);
-        // 0, 1, 2 should form one community; 3 should be different due to negative edge
         assert_eq!(labels.len(), 4);
+        // 0, 1, 2 form one community (positive chain).
+        assert_eq!(labels[0], labels[1]);
+        assert_eq!(labels[1], labels[2]);
+        // 3 should be in a different community than 2.
+        assert_ne!(labels[2], labels[3]);
+    }
+
+    #[test]
+    fn test_label_propagation_deterministic() {
+        // Two equal-weighted labels competing for vertex 0: tie must always
+        // resolve the same way (smallest label id wins).
+        let mut g = TernaryGraph::new(3, false);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(0, 2, Ternary::Positive);
+        // Run many times — any non-determinism would surface as a flaky fail.
+        let mut observed = std::collections::HashSet::new();
+        for _ in 0..50 {
+            let labels = label_propagation(&g, 5);
+            observed.insert(format!("{:?}", labels));
+        }
+        assert_eq!(
+            observed.len(),
+            1,
+            "label_propagation must be deterministic, saw {observed:?}"
+        );
     }
 
     #[test]
     fn test_modularity() {
+        // Graph: 0-1 (+1), 2-3 (+1), undirected, 4 verts, communities [0,0,1,1].
+        // Hand-derived: m=2, k=[1,1,1,1]; in-community sum = 2; Q = 2/4 = 0.5.
         let mut g = TernaryGraph::new(4, false);
         g.add_edge(0, 1, Ternary::Positive);
         g.add_edge(2, 3, Ternary::Positive);
         let communities = vec![0, 0, 1, 1];
         let q = modularity(&g, &communities);
-        // Good partition should have positive modularity
         assert!(
-            q > 0.0,
-            "Modularity should be positive for good partition, got {}",
-            q
+            (q - 0.5).abs() < 1e-12,
+            "Modularity of two disjoint edges split correctly should be exactly 0.5, got {q}"
         );
+    }
+
+    #[test]
+    fn test_modularity_bad_partition_is_negative() {
+        // Same graph but with the *wrong* partition: each community spans
+        // both edges, so no edge is internal. Modularity must be negative.
+        let mut g = TernaryGraph::new(4, false);
+        g.add_edge(0, 1, Ternary::Positive);
+        g.add_edge(2, 3, Ternary::Positive);
+        let communities = vec![0, 1, 0, 1];
+        let q = modularity(&g, &communities);
+        assert!(q < 0.0, "Bad partition should yield negative Q, got {q}");
     }
 
     #[test]
@@ -972,5 +1014,237 @@ mod tests {
         // Only positive edges connect
         assert_eq!(comp[0], comp[1]);
         assert_ne!(comp[1], comp[2]);
+    }
+
+    // ------------------------------------------------------------------
+    // New edge-case and sabotage-resilient coverage (round 4)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_empty_graph_all_algorithms() {
+        // n == 0 must not panic on any public algorithm.
+        let g = TernaryGraph::new(0, false);
+        assert_eq!(g.edge_count(), 0);
+        assert!(g.laplacian().is_empty());
+        assert!(g.normalized_laplacian().is_empty());
+        assert!(g.degree_matrix().is_empty());
+        assert!(g.adjacency_f64().is_empty());
+        assert!(shortest_paths(&g, 0).is_empty());
+        assert!(all_pairs_shortest_paths(&g).is_empty());
+        assert!(connected_components(&g).is_empty());
+        assert!(label_propagation(&g, 10).is_empty());
+        assert!(spectral_clustering(&g, 2).is_empty());
+    }
+
+    #[test]
+    fn test_single_vertex_graph() {
+        let g = TernaryGraph::new(1, false);
+        assert_eq!(g.degree(0), 0);
+        assert_eq!(g.edge_count(), 0);
+        let dist = shortest_paths(&g, 0);
+        assert_eq!(dist, vec![Some(0.0)]);
+        let apsp = all_pairs_shortest_paths(&g);
+        assert_eq!(apsp, vec![vec![Some(0.0)]]);
+        let comp = connected_components(&g);
+        assert_eq!(comp, vec![0]);
+    }
+
+    #[test]
+    fn test_self_loop_edge_count_directed() {
+        let mut g = TernaryGraph::new(3, true);
+        g.add_edge(0, 0, Ternary::Positive); // self loop
+        g.add_edge(1, 2, Ternary::Positive); // ordinary edge
+        assert_eq!(g.edge_count(), 2, "directed: self loop + ordinary edge = 2");
+    }
+
+    #[test]
+    fn test_self_loop_edge_count_undirected() {
+        // Regression: previously this returned 0 because the integer division
+        // `1 / 2` truncated the single self-loop cell.
+        let mut g = TernaryGraph::new(3, false);
+        g.add_edge(0, 0, Ternary::Positive); // self loop only
+        assert_eq!(
+            g.edge_count(),
+            1,
+            "undirected self-loop must count as 1 edge"
+        );
+        // The self-loop must not be mirrored onto adj[0][0] twice.
+        assert_eq!(g.adj[0][0], Ternary::Positive);
+
+        // Self-loop combined with an ordinary edge still counts correctly.
+        g.add_edge(1, 2, Ternary::Positive);
+        assert_eq!(g.edge_count(), 2);
+    }
+
+    #[test]
+    fn test_add_edge_neutral_removes_edge() {
+        // Adding Neutral is the documented way to remove an edge.
+        let mut g = TernaryGraph::new(3, false);
+        g.add_edge(0, 1, Ternary::Positive);
+        assert_eq!(g.edge_count(), 1);
+        g.add_edge(0, 1, Ternary::Neutral);
+        assert_eq!(g.edge_count(), 0);
+        assert_eq!(g.edge(0, 1), Ternary::Neutral);
+        assert_eq!(g.edge(1, 0), Ternary::Neutral);
+    }
+
+    #[test]
+    fn test_shortest_paths_negative_cycle_detected() {
+        // Directed all-negative triangle: total cycle weight = -3.
+        let mut g = TernaryGraph::new(3, true);
+        g.add_edge(0, 1, Ternary::Negative);
+        g.add_edge(1, 2, Ternary::Negative);
+        g.add_edge(2, 0, Ternary::Negative);
+        let dist = shortest_paths(&g, 0);
+        // Every vertex lies on the negative cycle.
+        assert_eq!(dist[0], None);
+        assert_eq!(dist[1], None);
+        assert_eq!(dist[2], None);
+    }
+
+    #[test]
+    fn test_shortest_paths_negative_self_loop_detected() {
+        // A negative self-loop is a length-1 negative cycle.
+        let mut g = TernaryGraph::new(2, true);
+        g.add_edge(0, 0, Ternary::Negative);
+        let dist = shortest_paths(&g, 0);
+        assert_eq!(dist[0], None, "vertex on negative self-loop must be None");
+    }
+
+    #[test]
+    fn test_shortest_paths_downstream_of_negative_cycle() {
+        // 0 ->( -1 ) 1 ->( -1 ) 2 ->( +1 ) 3
+        // 0,1,2 lie on a negative cycle (0 -> 1 -> 2 -> 0 weight -3); vertex
+        // 3 is reachable from 2 only via a downstream edge, so it should also
+        // be None (no well-defined shortest distance).
+        let mut g = TernaryGraph::new(4, true);
+        g.add_edge(0, 1, Ternary::Negative);
+        g.add_edge(1, 2, Ternary::Negative);
+        g.add_edge(2, 0, Ternary::Negative);
+        g.add_edge(2, 3, Ternary::Positive);
+        let dist = shortest_paths(&g, 0);
+        for (i, d) in dist.iter().enumerate() {
+            assert!(
+                d.is_none(),
+                "vertex {i} downstream of neg cycle: dist={d:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_pairs_detects_negative_cycle() {
+        let mut g = TernaryGraph::new(3, true);
+        g.add_edge(0, 1, Ternary::Negative);
+        g.add_edge(1, 2, Ternary::Negative);
+        g.add_edge(2, 0, Ternary::Negative);
+        let apsp = all_pairs_shortest_paths(&g);
+        for (i, row) in apsp.iter().enumerate().take(3) {
+            for (j, &d) in row.iter().enumerate().take(3) {
+                assert_eq!(d, None, "apsp[{i}][{j}] should be None on neg cycle");
+            }
+        }
+    }
+
+    #[test]
+    fn test_laplacian_path_graph_exact() {
+        // Path 0-1-2-3 (undirected, all +1).
+        // Hand-derived: D=diag(1,2,2,1); off-diag = -A.
+        let g = make_simple_graph();
+        let l = g.laplacian();
+        let expected = [
+            [1.0, -1.0, 0.0, 0.0],
+            [-1.0, 2.0, -1.0, 0.0],
+            [0.0, -1.0, 2.0, -1.0],
+            [0.0, 0.0, -1.0, 1.0],
+        ];
+        for (i, row) in l.iter().enumerate().take(4) {
+            for (j, &val) in row.iter().enumerate().take(4) {
+                assert!(
+                    (val - expected[i][j]).abs() < 1e-12,
+                    "L[{i}][{j}] = {val} expected {}",
+                    expected[i][j]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_normalized_laplacian_path_graph_exact() {
+        // Same path graph; d=[1,2,2,1]. Off-diagonals are -1/sqrt(d_i*d_j).
+        let g = make_simple_graph();
+        let ln = g.normalized_laplacian();
+        // Diagonal must be 1.
+        for (i, row) in ln.iter().enumerate().take(4) {
+            assert!(
+                (row[i] - 1.0).abs() < 1e-12,
+                "diag L_norm[{i}][{i}] = {}",
+                row[i]
+            );
+        }
+        // ln[0][1] = -1 / sqrt(1*2) = -1/sqrt(2).
+        let off = -1.0 / 2.0_f64.sqrt();
+        assert!(
+            (ln[0][1] - off).abs() < 1e-12,
+            "L_norm[0][1] = {} expected {}",
+            ln[0][1],
+            off
+        );
+        assert!(
+            (ln[1][2] - (-0.5)).abs() < 1e-12,
+            "L_norm[1][2] = {} expected -0.5",
+            ln[1][2]
+        );
+    }
+
+    #[test]
+    fn test_spectral_clustering_clear_two_clusters() {
+        // Two triangles joined by a single bridge: a textbook 2-cluster case.
+        let mut g = TernaryGraph::new(6, false);
+        for (u, v) in [(0, 1), (1, 2), (0, 2)] {
+            g.add_edge(u, v, Ternary::Positive);
+        }
+        for (u, v) in [(3, 4), (4, 5), (3, 5)] {
+            g.add_edge(u, v, Ternary::Positive);
+        }
+        g.add_edge(2, 3, Ternary::Positive); // bridge
+
+        let labels = spectral_clustering(&g, 2);
+        assert_eq!(labels.len(), 6);
+        // Every triangle should be entirely in one cluster.
+        let same_in_first = (labels[0] == labels[1]) as usize
+            + (labels[1] == labels[2]) as usize
+            + (labels[0] == labels[2]) as usize;
+        let same_in_second = (labels[3] == labels[4]) as usize
+            + (labels[4] == labels[5]) as usize
+            + (labels[3] == labels[5]) as usize;
+        assert!(
+            same_in_first >= 2,
+            "First triangle should be mostly one cluster: {:?}",
+            labels
+        );
+        assert!(
+            same_in_second >= 2,
+            "Second triangle should be mostly one cluster: {:?}",
+            labels
+        );
+        // And the two triangles should be in different clusters.
+        assert_ne!(labels[0], labels[3], "triangles must split: {:?}", labels);
+    }
+
+    #[test]
+    fn test_spectral_clustering_k_one() {
+        // k = 1 means "everyone in the same cluster".
+        let mut g = TernaryGraph::new(4, false);
+        g.add_edge(0, 1, Ternary::Positive);
+        let labels = spectral_clustering(&g, 1);
+        assert_eq!(labels, vec![0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_connected_components_isolated_vertex() {
+        // No edges at all -> every vertex is its own component.
+        let g = TernaryGraph::new(4, false);
+        let comp = connected_components(&g);
+        assert_eq!(comp, vec![0, 1, 2, 3]);
     }
 }
