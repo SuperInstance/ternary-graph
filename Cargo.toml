@@ -2,8 +2,12 @@
 name = "ternary-graph"
 version = "0.2.0"
 edition = "2021"
+rust-version = "1.75"
 license = "MIT"
-description = "Graph algorithms on ternary-weighted edges including shortest paths, community detection, and spectral clustering"
+description = "Graph algorithms over ternary-weighted edges {-1, 0, +1}: Bellman-Ford / Floyd-Warshall shortest paths, combinatorial and normalized Laplacians, label-propagation community detection, modularity, spectral clustering, and connected components."
+repository = "https://github.com/SuperInstance/ternary-graph"
+homepage = "https://github.com/SuperInstance/ternary-graph"
+readme = "README.md"
 keywords = ["ternary", "graph", "clustering", "spectral", "shortest-path"]
 categories = ["algorithms", "mathematics", "science"]
 

@@ -4,40 +4,50 @@
 
 ## Overview
 
-This crate implements ternary {-1, 0, +1} semantics for the `graph` domain.
-It is one of ~280 ternary crates in the SuperInstance fleet, all sharing Z₃ arithmetic
-from [ternary-core](https://github.com/SuperInstance/ternary-core).
+`ternary-graph` is a pure-Rust library of graph algorithms whose edge weights
+are restricted to the balanced ternary digit set `{-1, 0, +1}` (re-exported
+from [`ternary-types`](https://github.com/SuperInstance/ternary-types) as
+`ternary_graph::Ternary`).
 
-## Core Types
+The implementation lives in a single file, `src/lib.rs`, and is `#![forbid(unsafe_code)]`.
 
-- **`TernaryGraph`**
+## Core Type
 
-## Key Functions
+- **`TernaryGraph`** — Dense adjacency-matrix graph with `n` vertices. The
+  matrix is `Vec<Vec<Ternary>>`; `Ternary::Neutral` represents "no edge".
 
-- `to_i8()`
-- `to_f64()`
-- `new()`
-- `add_edge()`
-- `edge()`
-- `neighbors()`
-- `edge_count()`
-- `degree()`
+## Public API Surface
 
-## Ternary Mapping
+### Methods on `TernaryGraph`
 
-| Value | Meaning |
-|-------|---------|
-| +1 | Attractive edge |
-| 0  | No edge |
-| -1 | Repulsive edge |
+`new`, `add_edge`, `edge`, `neighbors`, `degree`, `edge_count`,
+`adjacency_f64`, `degree_matrix`, `laplacian`, `normalized_laplacian`.
+
+### Free functions
+
+`shortest_paths` (Bellman-Ford, single source),
+`all_pairs_shortest_paths` (Floyd-Warshall),
+`connected_components` (BFS over positive-weight edges),
+`label_propagation` (deterministic weighted label propagation),
+`modularity` (signed Newman Q),
+`spectral_clustering` (signed Laplacian + power iteration + Hotelling deflation).
+
+## Ternary Edge Mapping
+
+| Value | `Ternary` variant | Meaning |
+|-------|-------------------|---------|
+| `+1`  | `Positive`        | Attractive / excitatory / trust edge |
+| `0`   | `Neutral`         | No edge |
+| `-1`  | `Negative`        | Repulsive / inhibitory / distrust edge |
 
 ## Source Structure
 
-1 Rust source file(s) in `src/`.
-Language: Rust
+- `src/lib.rs` — All algorithms and unit tests.
+- `tests/` — None (all tests are in `src/lib.rs`).
+- `docs/FUTURE-INTEGRATION.md` — Cross-crate integration ideas.
 
 ## Cross-Repo References
 
-- [ternary-core](https://github.com/SuperInstance/ternary-core) — shared Z₃ traits
-- [ternary-types](https://github.com/SuperInstance/ternary-types) — type-level encodings
+- [ternary-types](https://github.com/SuperInstance/ternary-types) — shared
+  `Ternary` enum (`Negative`, `Neutral`, `Positive`) and `TernaryError`.
 - [Full SuperInstance fleet](https://github.com/orgs/SuperInstance/repositories?q=ternary)

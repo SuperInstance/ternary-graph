@@ -44,4 +44,5 @@ docs: update architecture
 
 ## License
 
-By contributing, you agree your contributions will be MIT OR Apache-2.0.
+By contributing, you agree your contributions will be MIT-licensed, matching
+the [LICENSE](./LICENSE) file and the `license` field in `Cargo.toml`.
