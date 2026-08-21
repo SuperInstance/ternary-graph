@@ -65,13 +65,18 @@ Eigenvalues of L_norm lie in [0, 2]. The spectral gap (λ₂ of L_norm) determin
 
 ### Spectral Clustering
 
-1. Compute L_norm
-2. Extract the k smallest eigenvectors v₁, ..., vₖ
-3. Stack them as columns: U ∈ ℝ^(n×k)
-4. Normalize rows of U to unit length
-5. Cluster rows of U via k-means
+The implementation in this crate uses the **signed** Laplacian (`D_ii = Σ_j |A_ij|`)
+and the standard "shift + power iteration + Hotelling deflation" pipeline:
 
-The ternary weight structure makes eigenvector computation particularly efficient — the power iteration becomes a sequence of additions and subtractions (no multiplications for the non-zero entries).
+1. Build the signed Laplacian `L = D − A`.
+2. Form `2n·I − L` so that the smallest eigenvalues of `L` become the largest.
+3. Use power iteration with deflation to extract the first `k + 1` eigenvectors.
+4. Discard the trivial constant eigenvector; for `k = 2` split vertices at
+   the median of the Fiedler vector; for `k > 2` hash each vertex's
+   eigenvector-sign pattern mod `k`.
+
+This is a lightweight stand-in for the full Ng-Jordan-Weiss row-wise k-means
+step. It produces correct partitions on graphs with a clean spectral gap.
 
 ### Complexity
 
@@ -114,32 +119,55 @@ g.add_edge(4, 5, Ternary::Positive);
 g.add_edge(5, 0, Ternary::Negative);
 
 // Compute Laplacian
-let L = g.laplacian();
+let l = g.laplacian();
 
 // Compute normalized Laplacian
-let L_norm = g.normalized_laplacian();
+let l_norm = g.normalized_laplacian();
 
 // Get neighbors
 let neighbors = g.neighbors(0);
 println!("Vertex 0 has {} connections", neighbors.len());
+// -> Vertex 0 has 2 connections
 ```
+
+Add `ternary-graph` to your `Cargo.toml`:
+
+```toml
+[dependencies]
+ternary-graph = { git = "https://github.com/SuperInstance/ternary-graph.git" }
+```
+
+The crate re-exports the [`Ternary`](https://docs.rs/ternary-types/latest/ternary_types/enum.Ternary.html)
+enum from `ternary-types`, so `Ternary::Positive` / `Neutral` / `Negative`
+are all available directly under `ternary_graph::`.
 
 ## API
 
-### `TernaryGraph`
+### `TernaryGraph` methods
 
 | Method | Description |
 |--------|-------------|
-| `new(n, directed)` | Create n-vertex graph |
-| `add_edge(u, v, weight)` | Add ternary-weighted edge |
-| `edge(u, v) -> Ternary` | Query edge weight |
-| `neighbors(v) -> Vec<(usize, Ternary)>` | Get (neighbor, weight) pairs |
-| `degree(v) -> usize` | Count non-zero edges |
-| `laplacian() -> Vec<Vec<f64>>` | Compute L = D − A |
-| `normalized_laplacian() -> Vec<Vec<f64>>` | Compute D^(−1/2) L D^(−1/2) |
-| `adjacency_f64() -> Vec<Vec<f64>>` | Adjacency as f64 matrix |
-| `degree_matrix() -> Vec<Vec<f64>>` | Diagonal degree matrix |
-| `edge_count() -> usize` | Total non-zero edges |
+| `new(n, directed)` | Create `n`-vertex graph with no edges |
+| `add_edge(u, v, weight)` | Add (or overwrite) a ternary-weighted edge; `Neutral` removes it |
+| `edge(u, v) -> Ternary` | Query edge weight between `u` and `v` |
+| `neighbors(v) -> Vec<(usize, Ternary)>` | List `(neighbor, weight)` pairs in ascending index order |
+| `degree(v) -> usize` | Count non-`Neutral` edges incident to `v` |
+| `edge_count() -> usize` | Total edges (off-diagonal counted once for undirected; self-loops once) |
+| `adjacency_f64() -> Vec<Vec<f64>>` | Adjacency matrix widened to `f64` |
+| `degree_matrix() -> Vec<Vec<f64>>` | Diagonal degree matrix `D` |
+| `laplacian() -> Vec<Vec<f64>>` | Combinatorial Laplacian `L = D − A` |
+| `normalized_laplacian() -> Vec<Vec<f64>>` | Sym. normalized Laplacian `D^(−1/2) L D^(−1/2)` |
+
+### Free functions
+
+| Function | Description |
+|----------|-------------|
+| `shortest_paths(&graph, src) -> Vec<Option<f64>>` | Bellman-Ford from `src`; returns `None` for unreachable vertices or vertices on / downstream of a negative cycle |
+| `all_pairs_shortest_paths(&graph) -> Vec<Vec<Option<f64>>>` | Floyd-Warshall all-pairs; same `None` semantics for negative cycles |
+| `connected_components(&graph) -> Vec<usize>` | Components of the *positive-weight* subgraph |
+| `label_propagation(&graph, max_iters) -> Vec<usize>` | Deterministic weighted label propagation |
+| `modularity(&graph, &communities) -> f64` | Signed Newman modularity `Q` |
+| `spectral_clustering(&graph, k) -> Vec<usize>` | Spectral clustering via the signed Laplacian and power iteration |
 
 ## Architecture Notes
 
